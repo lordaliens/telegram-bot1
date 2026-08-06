@@ -11,7 +11,19 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                referrer_id INTEGER
+                referrer_id INTEGER,
+                message_count INTEGER DEFAULT 0,
+                pending_message TEXT
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                role TEXT,
+                content TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
         await db.commit()
@@ -49,3 +61,57 @@ async def get_all_users():
         async with db.execute('SELECT user_id FROM users') as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+async def increment_message_count(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET message_count = message_count + 1 WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+
+async def get_message_count(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute('SELECT message_count FROM users WHERE user_id = ?', (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+async def set_pending_message(user_id, message):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET pending_message = ? WHERE user_id = ?',
+            (message, user_id)
+        )
+        await db.commit()
+
+async def get_pending_message(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute('SELECT pending_message FROM users WHERE user_id = ?', (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+async def clear_pending_message(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET pending_message = NULL WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+
+async def add_history(user_id, role, content):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'INSERT INTO history (user_id, role, content) VALUES (?, ?, ?)',
+            (user_id, role, content)
+        )
+        await db.commit()
+
+async def get_history(user_id, limit=20):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            'SELECT role, content FROM history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?',
+            (user_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            # Reverse to get chronological order for the model
+            return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
