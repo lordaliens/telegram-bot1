@@ -7,11 +7,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def get_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    city = update.message.text.strip()
-    if not city:
+    user_text = update.message.text.strip()
+    if not user_text:
         return
 
-    encoded_city = urllib.parse.quote(city)
+    if user_text == "ربات هواشناسی":
+        await update.message.reply_text("بله")
+        return
+
+    encoded_city = urllib.parse.quote(user_text)
     url = f"https://wttr.in/{encoded_city}?format=3"
 
     try:
@@ -25,5 +29,5 @@ async def get_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("Could not fetch weather data for that city.")
     except Exception as e:
-        logger.error(f"Error fetching weather for {city}: {e}")
+        logger.error(f"Error fetching weather for {user_text}: {e}")
         await update.message.reply_text("An error occurred while fetching the weather. Please check the city name and try again.")
