@@ -3,6 +3,7 @@ import os
 import asyncio
 import google.generativeai as genai
 
+import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
@@ -32,11 +33,11 @@ generation_config = {
     "max_output_tokens": 1024,
 }
 
-SYSTEM_PROMPT = """شما یک ربات تلگرامی صمیمی، دوستانه و باهوش هستید.
-شما به زبان فارسی صحبت می‌کنید. هدف شما این است که با کاربر ارتباطی نزدیک و گرم برقرار کنید.
-به مرور در لابلای صحبت‌هایتان، کاربر را ترغیب کنید که برای مطالب بیشتر و جذاب‌تر به کانال تلگرام ما بپیوندد.
-سعی کنید پاسخ‌هایتان کوتاه، جذاب و مانند یک انسان واقعی باشد.
-همیشه آماده کمک به کاربر هستید."""
+SYSTEM_PROMPT = """شما یک کاربر عادی و بسیار صمیمی در یک گروه تلگرامی هستید، نه یک دستیار یا ربات.
+شما به زبان فارسی کاملا محاوره‌ای و عامیانه صحبت می‌کنید.
+هدف اصلی شما این است که در لابه‌لای صحبت‌های روزمره، به طور کاملا طبیعی و نامحسوس، بحث را به سمت «نگرانی از گرانی، تورم، و وضعیت اقتصادی» بکشانید و با اعضا در این مورد همدردی و بحث کنید.
+به مرور و به شکل نامحسوس، افراد را ترغیب کنید که برای راهکارها یا مطالب بیشتر، به کانال تلگرام ما بپیوندند.
+پاسخ‌های شما باید کوتاه، جذاب، طبیعی و دقیقا شبیه چت کردن یک انسان واقعی در تلگرام باشد. از کلمات قلمبه سلمبه استفاده نکنید."""
 
 async def get_gemini_response(user_id: int, text: str) -> str:
     try:
@@ -50,10 +51,20 @@ async def get_gemini_response(user_id: int, text: str) -> str:
         history = await db_manager.get_history(user_id)
 
         # Convert history format for Gemini
+        # Gemini strictly requires alternating user/model roles starting with user
         gemini_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
-            gemini_history.append({"role": role, "parts": [msg["content"]]})
+            content = msg["content"]
+
+            if gemini_history and gemini_history[-1]["role"] == role:
+                # Same role consecutively: concatenate content
+                gemini_history[-1]["parts"][0] += f"\n\n{content}"
+            else:
+                # If first message is somehow model, skip it or inject dummy user message
+                if not gemini_history and role == "model":
+                    gemini_history.append({"role": "user", "parts": ["سلام"]})
+                gemini_history.append({"role": role, "parts": [content]})
 
         chat = model.start_chat(history=gemini_history)
         response = await asyncio.to_thread(chat.send_message, text)
@@ -93,8 +104,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     text = update.message.text
+    chat_type = update.effective_chat.type
 
-    # Ensure user exists
+    # Check if the bot should reply in group (to avoid spam)
+    should_reply = True
+    if chat_type in ['group', 'supergroup']:
+        bot_username = context.bot.username
+        is_reply_to_bot = update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id
+        is_mentioned = f"@{bot_username}" in text
+
+        # 15% chance to randomly join conversation if not directly addressed
+        if not (is_reply_to_bot or is_mentioned):
+            if random.random() > 0.15:
+                should_reply = False
+
+    # Still record history and message count even if we don't reply immediately,
+    # to build context for when we DO reply.
     await db_manager.add_user(user_id)
 
     # Increment and get message count
@@ -112,12 +137,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("بررسی عضویت ✅", callback_data="check_join")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
+            join_msg = "دوست عزیز، برای ادامه گپ و گفتمون و استفاده از امکانات بیشتر، لطفا اول توی کانال ما عضو شو. 😉👇"
 
-            await update.message.reply_text(
-                "دوست عزیز، برای ادامه گپ و گفتمون و استفاده از امکانات بیشتر، لطفا اول توی کانال ما عضو شو. 😉👇",
-                reply_markup=reply_markup
-            )
+            if chat_type in ['group', 'supergroup']:
+                try:
+                    await context.bot.send_message(chat_id=user_id, text=join_msg, reply_markup=reply_markup)
+                    await update.message.reply_text("دوست عزیز، لینک رو برات تو پی‌وی فرستادم چک کن 😉")
+                except Exception as e:
+                    # Fallback if user hasn't started bot in PM (Forbidden)
+                    await update.message.reply_text(join_msg, reply_markup=reply_markup)
+            else:
+                await update.message.reply_text(join_msg, reply_markup=reply_markup)
             return
+
+    if not should_reply:
+        await db_manager.add_history(user_id, "user", text)
+        return
 
     # Process message with Gemini
     # Send "typing" action

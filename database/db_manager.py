@@ -11,11 +11,21 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                referrer_id INTEGER,
-                message_count INTEGER DEFAULT 0,
-                pending_message TEXT
+                referrer_id INTEGER
             )
         ''')
+
+        # Migrations to add new columns safely if they don't exist
+        try:
+            await db.execute('ALTER TABLE users ADD COLUMN message_count INTEGER DEFAULT 0')
+        except aiosqlite.OperationalError:
+            pass # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE users ADD COLUMN pending_message TEXT')
+        except aiosqlite.OperationalError:
+            pass # Column already exists
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
