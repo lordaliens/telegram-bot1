@@ -1,10 +1,10 @@
 import logging
 import os
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 from config import BOT_TOKEN
 from database import db_manager
-from handlers import start, broadcast
+from handlers import start, broadcast, weather
 
 # ست کردن پروکسی Clash Verge برای کل پروژه پایتون (سازگار با همه نسخه‌ها)
 os.environ["HTTP_PROXY"] = "http://127.0.0.1:7897"
@@ -48,6 +48,7 @@ def main():
 
     application.add_handler(CommandHandler("start", start.start))
     application.add_handler(CommandHandler("broadcast", broadcast.broadcast))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, weather.get_weather))
 
     logger.info("Starting bot...")
     application.run_polling()
