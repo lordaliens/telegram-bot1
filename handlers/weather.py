@@ -15,6 +15,17 @@ async def get_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("بله")
         return
 
+    # Check if the user is replying to a previous message from the bot that says "بله"
+    is_reply_to_bot = (
+        update.message.reply_to_message and
+        update.message.reply_to_message.from_user and
+        update.message.reply_to_message.from_user.id == context.bot.id and
+        update.message.reply_to_message.text == "بله"
+    )
+
+    if not is_reply_to_bot:
+        return
+
     encoded_city = urllib.parse.quote(user_text)
     url = f"https://wttr.in/{encoded_city}?format=3"
 
