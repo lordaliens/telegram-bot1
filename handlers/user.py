@@ -28,7 +28,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db_user = await db_manager.get_user(user_id)
     if not db_user:
-        # Prompt language selection on first start
         keyboard = []
         for code, label in SUPPORTED_LANGUAGES.items():
             keyboard.append([InlineKeyboardButton(label, callback_data=f"set_lang_{code}")])
@@ -104,9 +103,8 @@ async def catalog_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = db_user.get('language', 'fa') if db_user else 'fa'
 
     keyboard = [
-        [InlineKeyboardButton(get_text('sheets', lang), callback_data="cat_user_sheets")],
-        [InlineKeyboardButton(get_text('rebars', lang), callback_data="cat_user_rebars")],
-        [InlineKeyboardButton(get_text('ibeams', lang), callback_data="cat_user_ibeams")],
+        [InlineKeyboardButton(get_text('mobarakeh_flat', lang), callback_data="cat_user_mobarakeh_flat")],
+        [InlineKeyboardButton(get_text('zobahan_long', lang), callback_data="cat_user_zobahan_long")],
         [InlineKeyboardButton("🔙", callback_data="user_main_menu")]
     ]
     await query.message.edit_text(get_text('select_category', lang), reply_markup=InlineKeyboardMarkup(keyboard))
@@ -131,11 +129,18 @@ async def view_category_products(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    # Delete previous message if photo is going to be sent
     try:
         await query.message.delete()
     except Exception:
         pass
+
+    cat_title = get_text(category, lang) if category in ['mobarakeh_flat', 'zobahan_long'] else category
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"🏢 **{cat_title}**\n\nلیست محصولات و مشخصات فنی:",
+        parse_mode='Markdown'
+    )
 
     for p in products:
         final_usd = p['raw_price_usd'] * (1 + p['tariff_percent'] / 100.0)
@@ -161,7 +166,6 @@ async def view_category_products(update: Update, context: ContextTypes.DEFAULT_T
                 parse_mode='Markdown'
             )
 
-    # Back to catalog button
     await context.bot.send_message(
         chat_id=user_id,
         text="-----------------------------------",
@@ -214,7 +218,6 @@ async def calc_qty_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_total_usd = final_unit_usd * quantity
         final_total_in_curr = final_unit_in_curr * quantity
 
-        # Create Order record in DB
         order_id = await db_manager.create_order(
             user_id=user_id,
             product_id=product['id'],
@@ -274,7 +277,6 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     order_data = context.user_data.get('last_order_data')
     if not order_data or order_data['order_id'] != order_id:
-        # Fallback fetch from DB if session state lost
         orders = await db_manager.get_user_orders(user_id)
         matching = [o for o in orders if o['id'] == order_id]
         if matching:
@@ -314,7 +316,6 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
         caption=get_text('pdf_generated', lang)
     )
 
-    # Clean up PDF file
     if os.path.exists(pdf_path):
         os.remove(pdf_path)
 

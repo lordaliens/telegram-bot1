@@ -5,6 +5,29 @@ DB_NAME = "bot_database.db"
 
 logger = logging.getLogger(__name__)
 
+# Pre-defined complete steel products
+DEFAULT_PRODUCTS = [
+    # Category 1: شرکت فولاد مبارکه اصفهان (محصولات تخت / mobarakeh_flat)
+    ("mobarakeh_flat", "تختال (اسلب)", "ضخامت 200 تا 250 میلی‌متر | عرض 900 تا 2000 میلی‌متر | طول 4 تا 10.5 متر", 520.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق نورد گرم (ورق سیاه)", "ضخامت 1.2 تا 16 میلی‌متر | عرض 600 تا 1850 میلی‌متر (رول و شیت)", 610.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق اسیدشویی شده", "ضخامت 1.2 تا 6 میلی‌متر | عرض 600 تا 1530 میلی‌متر (رول)", 650.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق نورد سرد (ورق روغنی)", "ضخامت 0.3 تا 3 میلی‌متر | عرض 600 تا 1620 میلی‌متر (رول و شیت)", 720.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق گالوانیزه", "ضخامت 0.25 تا 3 میلی‌متر | عرض 750 تا 1500 میلی‌متر (رول و شیت)", 810.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق رنگی", "ضخامت 0.25 تا 1.5 میلی‌متر | عرض 750 تا 1300 میلی‌متر (رول)", 890.0, 5.0, "ton"),
+    ("mobarakeh_flat", "ورق قلع‌اندود", "ضخامت 0.13 تا 0.5 میلی‌متر | عرض 600 تا 1000 میلی‌متر (رول و شیت)", 950.0, 5.0, "ton"),
+
+    # Category 2: شرکت ذوب‌آهن اصفهان (مقاطع طویل / zobahan_long)
+    ("zobahan_long", "تیرآهن معمولی (IPE)", "سایز 12 تا 30 سانتی‌متر | طول شاخه 12 متر", 580.0, 5.0, "ton"),
+    ("zobahan_long", "تیرآهن بال‌پهن (هاش سبک و سنگین)", "سایز 14 تا 30 سانتی‌متر | طول شاخه 12 متر", 640.0, 5.0, "ton"),
+    ("zobahan_long", "میلگرد آجدار (گریدهای A2 و A3)", "سایز 8 تا 32 میلی‌متر | طول شاخه 12 متر", 550.0, 5.0, "ton"),
+    ("zobahan_long", "میلگرد ساده (گرید A1)", "سایز 14 تا 32 میلی‌متر | طول شاخه 12 متر", 540.0, 5.0, "ton"),
+    ("zobahan_long", "کلاف و مفتول صنعتی", "سایز 5.5 تا 14 میلی‌متر (رول پیوسته)", 570.0, 5.0, "ton"),
+    ("zobahan_long", "ریل راه‌آهن (UIC60 و U33)", "طول شاخه 18 تا 36 متر", 780.0, 5.0, "ton"),
+    ("zobahan_long", "نبشی", "سایز 40 در 40 تا 150 در 150 میلی‌متر | طول شاخه 12 متر", 560.0, 5.0, "ton"),
+    ("zobahan_long", "ناودانی (UPE و UPN)", "سایز 14 تا 30 سانتی‌متر | طول شاخه 12 متر", 575.0, 5.0, "ton"),
+    ("zobahan_long", "شمش فولادی (بیلت)", "سایز 130 در 130 و 150 در 150 میلی‌متر | طول 6 تا 12 متر", 490.0, 5.0, "ton"),
+]
+
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute('''
@@ -17,7 +40,6 @@ async def init_db():
             )
         ''')
 
-        # Check if columns exist in case db existed before
         async with db.execute("PRAGMA table_info(users)") as cursor:
             columns = [row[1] for row in await cursor.fetchall()]
             if 'language' not in columns:
@@ -34,11 +56,6 @@ async def init_db():
             )
         ''')
 
-        async with db.execute("PRAGMA table_info(exchange_rates)") as cursor:
-            columns = [row[1] for row in await cursor.fetchall()]
-            if 'is_manual' not in columns:
-                await db.execute("ALTER TABLE exchange_rates ADD COLUMN is_manual INTEGER DEFAULT 0")
-
         await db.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,11 +69,6 @@ async def init_db():
                 is_active INTEGER DEFAULT 1
             )
         ''')
-
-        async with db.execute("PRAGMA table_info(products)") as cursor:
-            columns = [row[1] for row in await cursor.fetchall()]
-            if 'photo_file_id' not in columns:
-                await db.execute("ALTER TABLE products ADD COLUMN photo_file_id TEXT")
 
         await db.execute('''
             CREATE TABLE IF NOT EXISTS orders (
@@ -75,25 +87,34 @@ async def init_db():
             )
         ''')
 
-        # Insert default exchange rates if table is empty
+        # Default exchange rates
         async with db.execute("SELECT COUNT(*) FROM exchange_rates") as cursor:
             count = (await cursor.fetchone())[0]
             if count == 0:
                 default_rates = [
                     ('USD', 1.0, 0),
-                    ('IQD', 1310.0, 0),    # Iraqi Dinar per USD
-                    ('GEL', 2.70, 0),      # Georgian Lari per USD
-                    ('TJS', 10.90, 0),     # Tajikistani Somoni per USD
-                    ('AFN', 70.0, 0),      # Afghan Afghani per USD
-                    ('IRR', 650000.0, 0)   # Iranian Toman/Rial representation
+                    ('IQD', 1310.0, 0),
+                    ('GEL', 2.70, 0),
+                    ('TJS', 10.90, 0),
+                    ('AFN', 70.0, 0),
+                    ('IRR', 650000.0, 0)
                 ]
                 await db.executemany(
                     'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd, is_manual) VALUES (?, ?, ?)',
                     default_rates
                 )
 
+        # Seed default products if products table is empty
+        async with db.execute("SELECT COUNT(*) FROM products") as cursor:
+            prod_count = (await cursor.fetchone())[0]
+            if prod_count == 0:
+                await db.executemany(
+                    'INSERT INTO products (category, name, specification, raw_price_usd, tariff_percent, unit) VALUES (?, ?, ?, ?, ?, ?)',
+                    DEFAULT_PRODUCTS
+                )
+                logger.info("Pre-loaded 16 Mobarakeh & Zob Ahan steel products into products table.")
+
         await db.commit()
-        logger.info("Database initialized with photo_file_id and auto exchange rate metadata.")
 
 async def add_user(user_id, referrer_id=None, language='fa'):
     async with aiosqlite.connect(DB_NAME) as db:

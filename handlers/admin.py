@@ -41,11 +41,10 @@ async def start_add_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     keyboard = [
-        [InlineKeyboardButton("ورق آهن (sheets)", callback_data="cat_sheets")],
-        [InlineKeyboardButton("میلگرد (rebars)", callback_data="cat_rebars")],
-        [InlineKeyboardButton("تیرآهن (ibeams)", callback_data="cat_ibeams")]
+        [InlineKeyboardButton("فولاد مبارکه اصفهان (محصولات تخت)", callback_data="cat_mobarakeh_flat")],
+        [InlineKeyboardButton("ذوب‌آهن اصفهان (مقاطع طویل)", callback_data="cat_zobahan_long")]
     ]
-    await query.message.edit_text("دسته‌بندی محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.message.edit_text("دسته‌بندی اصلی محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
     return ADD_PROD_CAT
 
 async def add_prod_cat_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,26 +53,26 @@ async def add_prod_cat_selected(update: Update, context: ContextTypes.DEFAULT_TY
     category = query.data.replace("cat_", "")
     context.user_data['new_prod_cat'] = category
 
-    await query.message.edit_text(f"دسته‌بندی `{category}` انتخاب شد.\n\nلطفاً **نام محصول** را وارد کنید (مثال: میلگرد 14 اصفهان):", parse_mode='Markdown')
+    await query.message.edit_text(f"دسته‌بندی `{category}` انتخاب شد.\n\nلطفاً **نام محصول** را وارد کنید (مثال: تیرآهن 18 ذوب‌آهن):", parse_mode='Markdown')
     return ADD_PROD_NAME
 
 async def add_prod_name_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
     context.user_data['new_prod_name'] = name
-    await update.message.reply_text("لطفاً **مشخصات/سایز/استاندارد** محصول را وارد کنید (مثال: A3 - شاخه 12 متری):")
+    await update.message.reply_text("لطفاً **مشخصات/سایز/استاندارد** محصول را وارد کنید (مثال: شاخه 12 متری - IPE):")
     return ADD_PROD_SPEC
 
 async def add_prod_spec_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
     spec = update.message.text.strip()
     context.user_data['new_prod_spec'] = spec
-    await update.message.reply_text("لطفاً **قیمت خام دلار (به ازای هر تن)** را وارد کنید (مثال: 550.5):")
+    await update.message.reply_text("لطفاً **قیمت خام دلار (به ازای هر تن)** را وارد کنید (مثال: 580.0):")
     return ADD_PROD_RAW_PRICE
 
 async def add_prod_raw_price_entered(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         raw_price = float(update.message.text.strip())
         context.user_data['new_prod_raw_price'] = raw_price
-        await update.message.reply_text("لطفاً **درصد تعرفه/کارمزد/سود ادمین (%)** را وارد کنید (مثال: 5.5 برای 5.5%):")
+        await update.message.reply_text("لطفاً **درصد تعرفه/کارمزد/سود ادمین (%)** را وارد کنید (مثال: 5.0 برای 5%):")
         return ADD_PROD_TARIFF
     except ValueError:
         await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید:")
