@@ -6,6 +6,7 @@ from telegram.request import HTTPXRequest
 from config import BOT_TOKEN, ADMIN_IDS
 from database import db_manager
 from handlers import user, admin, broadcast
+from currency_service import fetch_and_update_exchange_rates
 
 # Set proxy if explicitly provided in environment variables
 http_proxy = os.getenv("HTTP_PROXY")
@@ -25,7 +26,9 @@ logger = logging.getLogger(__name__)
 async def post_init(application: Application):
     logger.info("Initializing database...")
     await db_manager.init_db()
-    logger.info("Database initialized.")
+    logger.info("Fetching initial live exchange rates...")
+    await fetch_and_update_exchange_rates()
+    logger.info("Bot post_init complete.")
 
 def main():
     if not BOT_TOKEN:
@@ -57,6 +60,10 @@ def main():
             admin.ADD_PROD_SPEC: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin.add_prod_spec_entered)],
             admin.ADD_PROD_RAW_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin.add_prod_raw_price_entered)],
             admin.ADD_PROD_TARIFF: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin.add_prod_tariff_entered)],
+            admin.ADD_PROD_PHOTO: [
+                MessageHandler(filters.PHOTO, admin.add_prod_photo_entered),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, admin.add_prod_photo_entered)
+            ],
         },
         fallbacks=[CommandHandler("cancel", admin.cancel_admin_conv)]
     )
@@ -103,6 +110,7 @@ def main():
     application.add_handler(CallbackQueryHandler(admin.list_products_admin, pattern="^admin_list_products$"))
     application.add_handler(CallbackQueryHandler(admin.delete_product_handler, pattern="^del_prod_"))
     application.add_handler(CallbackQueryHandler(admin.view_rates_admin, pattern="^admin_rates$"))
+    application.add_handler(CallbackQueryHandler(admin.trigger_fetch_live_rates, pattern="^admin_fetch_live_rates$"))
     application.add_handler(CallbackQueryHandler(admin.view_orders_admin, pattern="^admin_orders$"))
     application.add_handler(CallbackQueryHandler(admin.admin_broadcast_prompt, pattern="^admin_broadcast$"))
 

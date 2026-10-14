@@ -48,7 +48,15 @@ async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
     user_id = query.from_user.id
-    lang_code = query.data.replace("set_lang_", "")
+    lang_code = query.data.replace("set_lang_", "").replace("user_change_lang", "fa")
+
+    if query.data == "user_change_lang":
+        keyboard = []
+        for code, label in SUPPORTED_LANGUAGES.items():
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"set_lang_{code}")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(get_text('select_lang', 'en'), reply_markup=reply_markup)
+        return
 
     db_user = await db_manager.get_user(user_id)
     if not db_user:
@@ -123,20 +131,42 @@ async def view_category_products(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    text = f"📦 **{get_text('menu_catalog', lang)} ({category})**\n\n"
-    keyboard = []
+    # Delete previous message if photo is going to be sent
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
     for p in products:
         final_usd = p['raw_price_usd'] * (1 + p['tariff_percent'] / 100.0)
         final_in_curr = final_usd * rate
 
-        text += (
-            f"🔹 **{p['name']}**\n"
-            f"   {get_text('product_detail', lang, name=p['name'], spec=p['specification'], unit=p['unit'], price=f'{final_in_curr:,.2f}', currency=user_curr)}\n\n"
-        )
-        keyboard.append([InlineKeyboardButton(f"🧮 {p['name']}", callback_data=f"calc_prod_{p['id']}")])
+        prod_caption = get_text('product_detail', lang, name=p['name'], spec=p['specification'], unit=p['unit'], price=f'{final_in_curr:,.2f}', currency=user_curr)
 
-    keyboard.append([InlineKeyboardButton("🔙", callback_data="user_catalog")])
-    await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        keyboard = [[InlineKeyboardButton(f"🧮 {get_text('menu_calc', lang)} ({p['name']})", callback_data=f"calc_prod_{p['id']}")]]
+
+        if p.get('photo_file_id'):
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=p['photo_file_id'],
+                caption=prod_caption,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=prod_caption,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+
+    # Back to catalog button
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="-----------------------------------",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="user_catalog")]])
+    )
 
 async def start_calc_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -149,13 +179,13 @@ async def start_calc_product(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     product = await db_manager.get_product(prod_id)
     if not product:
-        await query.message.edit_text("Product not found.")
+        await query.message.reply_text("Product not found.")
         return ConversationHandler.END
 
     context.user_data['calc_prod_id'] = prod_id
     context.user_data['calc_prod'] = product
 
-    await query.message.edit_text(
+    await query.message.reply_text(
         get_text('enter_quantity', lang, unit=product['unit'])
     )
     return CALC_QTY
@@ -244,9 +274,26 @@ async def generate_pdf_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     order_data = context.user_data.get('last_order_data')
     if not order_data or order_data['order_id'] != order_id:
-        # Fallback fetch from DB if state lost
-        await query.message.reply_text("Error fetching order data.")
-        return
+        # Fallback fetch from DB if session state lost
+        orders = await db_manager.get_user_orders(user_id)
+        matching = [o for o in orders if o['id'] == order_id]
+        if matching:
+            o = matching[0]
+            prod = await db_manager.get_product(o['product_id'])
+            order_data = {
+                'order_id': o['id'],
+                'user_id': o['user_id'],
+                'product_name': o['product_name'],
+                'spec': prod['specification'] if prod else '',
+                'quantity': o['quantity'],
+                'unit': o['unit'],
+                'unit_price': o['final_total_in_currency'] / o['quantity'] if o['quantity'] > 0 else 0,
+                'total_price': o['final_total_in_currency'],
+                'currency': o['currency']
+            }
+        else:
+            await query.message.reply_text("Error fetching order data.")
+            return
 
     pdf_path = f"invoice_{order_id}.pdf"
     generate_invoice_pdf(

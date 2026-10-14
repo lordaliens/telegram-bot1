@@ -17,7 +17,7 @@ async def init_db():
             )
         ''')
 
-        # Check if language or currency column exists in case db existed before
+        # Check if columns exist in case db existed before
         async with db.execute("PRAGMA table_info(users)") as cursor:
             columns = [row[1] for row in await cursor.fetchall()]
             if 'language' not in columns:
@@ -29,9 +29,15 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS exchange_rates (
                 currency_code TEXT PRIMARY KEY,
                 rate_to_usd REAL NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_manual INTEGER DEFAULT 0
             )
         ''')
+
+        async with db.execute("PRAGMA table_info(exchange_rates)") as cursor:
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'is_manual' not in columns:
+                await db.execute("ALTER TABLE exchange_rates ADD COLUMN is_manual INTEGER DEFAULT 0")
 
         await db.execute('''
             CREATE TABLE IF NOT EXISTS products (
@@ -42,9 +48,15 @@ async def init_db():
                 raw_price_usd REAL NOT NULL,
                 tariff_percent REAL DEFAULT 0.0,
                 unit TEXT DEFAULT 'ton',
+                photo_file_id TEXT,
                 is_active INTEGER DEFAULT 1
             )
         ''')
+
+        async with db.execute("PRAGMA table_info(products)") as cursor:
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'photo_file_id' not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN photo_file_id TEXT")
 
         await db.execute('''
             CREATE TABLE IF NOT EXISTS orders (
@@ -68,20 +80,20 @@ async def init_db():
             count = (await cursor.fetchone())[0]
             if count == 0:
                 default_rates = [
-                    ('USD', 1.0),
-                    ('IQD', 1310.0),    # Iraqi Dinar per USD
-                    ('GEL', 2.70),      # Georgian Lari per USD
-                    ('TJS', 10.90),     # Tajikistani Somoni per USD
-                    ('AFN', 70.0),      # Afghan Afghani per USD
-                    ('IRR', 650000.0)   # Iranian Toman/Rial representation
+                    ('USD', 1.0, 0),
+                    ('IQD', 1310.0, 0),    # Iraqi Dinar per USD
+                    ('GEL', 2.70, 0),      # Georgian Lari per USD
+                    ('TJS', 10.90, 0),     # Tajikistani Somoni per USD
+                    ('AFN', 70.0, 0),      # Afghan Afghani per USD
+                    ('IRR', 650000.0, 0)   # Iranian Toman/Rial representation
                 ]
                 await db.executemany(
-                    'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd) VALUES (?, ?)',
+                    'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd, is_manual) VALUES (?, ?, ?)',
                     default_rates
                 )
 
         await db.commit()
-        logger.info("Database initialized with full multi-currency and product schema.")
+        logger.info("Database initialized with photo_file_id and auto exchange rate metadata.")
 
 async def add_user(user_id, referrer_id=None, language='fa'):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -128,11 +140,11 @@ async def get_all_users():
             return [row[0] for row in rows]
 
 # Exchange Rates Management
-async def set_exchange_rate(currency_code, rate_to_usd):
+async def set_exchange_rate(currency_code, rate_to_usd, is_manual=1):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-            (currency_code.upper(), rate_to_usd)
+            'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd, is_manual, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+            (currency_code.upper(), rate_to_usd, is_manual)
         )
         await db.commit()
 
@@ -141,27 +153,28 @@ async def get_exchange_rates():
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM exchange_rates') as cursor:
             rows = await cursor.fetchall()
-            return {row['currency_code']: row['rate_to_usd'] for row in rows}
+            return {row['currency_code']: dict(row) for row in rows}
 
 async def get_exchange_rate(currency_code):
     rates = await get_exchange_rates()
-    return rates.get(currency_code.upper(), 1.0)
+    curr = rates.get(currency_code.upper())
+    return curr['rate_to_usd'] if curr else 1.0
 
 # Products Management
-async def add_product(category, name, specification, raw_price_usd, tariff_percent=0.0, unit='ton'):
+async def add_product(category, name, specification, raw_price_usd, tariff_percent=0.0, unit='ton', photo_file_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            'INSERT INTO products (category, name, specification, raw_price_usd, tariff_percent, unit) VALUES (?, ?, ?, ?, ?, ?)',
-            (category, name, specification, raw_price_usd, tariff_percent, unit)
+            'INSERT INTO products (category, name, specification, raw_price_usd, tariff_percent, unit, photo_file_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (category, name, specification, raw_price_usd, tariff_percent, unit, photo_file_id)
         )
         await db.commit()
         return cursor.lastrowid
 
-async def update_product(product_id, category, name, specification, raw_price_usd, tariff_percent, unit='ton'):
+async def update_product(product_id, category, name, specification, raw_price_usd, tariff_percent, unit='ton', photo_file_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            'UPDATE products SET category=?, name=?, specification=?, raw_price_usd=?, tariff_percent=?, unit=? WHERE id=?',
-            (category, name, specification, raw_price_usd, tariff_percent, unit, product_id)
+            'UPDATE products SET category=?, name=?, specification=?, raw_price_usd=?, tariff_percent=?, unit=?, photo_file_id=? WHERE id=?',
+            (category, name, specification, raw_price_usd, tariff_percent, unit, photo_file_id, product_id)
         )
         await db.commit()
 
