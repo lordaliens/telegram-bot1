@@ -11,32 +11,109 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                referrer_id INTEGER
+                referrer_id INTEGER,
+                language TEXT DEFAULT 'fa',
+                currency TEXT DEFAULT 'USD'
             )
         ''')
-        await db.commit()
-        logger.info("Database initialized.")
 
-async def add_user(user_id, referrer_id=None):
+        # Check if language or currency column exists in case db existed before
+        async with db.execute("PRAGMA table_info(users)") as cursor:
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'language' not in columns:
+                await db.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'fa'")
+            if 'currency' not in columns:
+                await db.execute("ALTER TABLE users ADD COLUMN currency TEXT DEFAULT 'USD'")
+
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS exchange_rates (
+                currency_code TEXT PRIMARY KEY,
+                rate_to_usd REAL NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                name TEXT NOT NULL,
+                specification TEXT,
+                raw_price_usd REAL NOT NULL,
+                tariff_percent REAL DEFAULT 0.0,
+                unit TEXT DEFAULT 'ton',
+                is_active INTEGER DEFAULT 1
+            )
+        ''')
+
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                product_name TEXT,
+                quantity REAL NOT NULL,
+                unit TEXT DEFAULT 'ton',
+                raw_total_usd REAL,
+                final_total_usd REAL,
+                currency TEXT NOT NULL,
+                final_total_in_currency REAL NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Insert default exchange rates if table is empty
+        async with db.execute("SELECT COUNT(*) FROM exchange_rates") as cursor:
+            count = (await cursor.fetchone())[0]
+            if count == 0:
+                default_rates = [
+                    ('USD', 1.0),
+                    ('IQD', 1310.0),    # Iraqi Dinar per USD
+                    ('GEL', 2.70),      # Georgian Lari per USD
+                    ('TJS', 10.90),     # Tajikistani Somoni per USD
+                    ('AFN', 70.0),      # Afghan Afghani per USD
+                    ('IRR', 650000.0)   # Iranian Toman/Rial representation
+                ]
+                await db.executemany(
+                    'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd) VALUES (?, ?)',
+                    default_rates
+                )
+
+        await db.commit()
+        logger.info("Database initialized with full multi-currency and product schema.")
+
+async def add_user(user_id, referrer_id=None, language='fa'):
     async with aiosqlite.connect(DB_NAME) as db:
         try:
             await db.execute(
-                'INSERT INTO users (user_id, referrer_id) VALUES (?, ?)',
-                (user_id, referrer_id)
+                'INSERT INTO users (user_id, referrer_id, language) VALUES (?, ?, ?)',
+                (user_id, referrer_id, language)
             )
             await db.commit()
             return True
         except aiosqlite.IntegrityError:
-            # User already exists
             return False
         except Exception as e:
             logger.error(f"Error adding user {user_id}: {e}")
             return False
 
+async def update_user_language(user_id, language):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
+        await db.commit()
+
+async def update_user_currency(user_id, currency):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('UPDATE users SET currency = ? WHERE user_id = ?', (currency, user_id))
+        await db.commit()
+
 async def get_user(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)) as cursor:
-            return await cursor.fetchone()
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
 async def get_referral_count(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -49,3 +126,90 @@ async def get_all_users():
         async with db.execute('SELECT user_id FROM users') as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+# Exchange Rates Management
+async def set_exchange_rate(currency_code, rate_to_usd):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'INSERT OR REPLACE INTO exchange_rates (currency_code, rate_to_usd, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+            (currency_code.upper(), rate_to_usd)
+        )
+        await db.commit()
+
+async def get_exchange_rates():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM exchange_rates') as cursor:
+            rows = await cursor.fetchall()
+            return {row['currency_code']: row['rate_to_usd'] for row in rows}
+
+async def get_exchange_rate(currency_code):
+    rates = await get_exchange_rates()
+    return rates.get(currency_code.upper(), 1.0)
+
+# Products Management
+async def add_product(category, name, specification, raw_price_usd, tariff_percent=0.0, unit='ton'):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            'INSERT INTO products (category, name, specification, raw_price_usd, tariff_percent, unit) VALUES (?, ?, ?, ?, ?, ?)',
+            (category, name, specification, raw_price_usd, tariff_percent, unit)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+async def update_product(product_id, category, name, specification, raw_price_usd, tariff_percent, unit='ton'):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE products SET category=?, name=?, specification=?, raw_price_usd=?, tariff_percent=?, unit=? WHERE id=?',
+            (category, name, specification, raw_price_usd, tariff_percent, unit, product_id)
+        )
+        await db.commit()
+
+async def delete_product(product_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('UPDATE products SET is_active = 0 WHERE id = ?', (product_id,))
+        await db.commit()
+
+async def get_products(category=None):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        if category:
+            async with db.execute('SELECT * FROM products WHERE category = ? AND is_active = 1', (category,)) as cursor:
+                rows = await cursor.fetchall()
+        else:
+            async with db.execute('SELECT * FROM products WHERE is_active = 1') as cursor:
+                rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+async def get_product(product_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM products WHERE id = ?', (product_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+# Orders Management
+async def create_order(user_id, product_id, product_name, quantity, unit, raw_total_usd, final_total_usd, currency, final_total_in_currency):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            '''INSERT INTO orders
+               (user_id, product_id, product_name, quantity, unit, raw_total_usd, final_total_usd, currency, final_total_in_currency)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (user_id, product_id, product_name, quantity, unit, raw_total_usd, final_total_usd, currency, final_total_in_currency)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+async def get_user_orders(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC', (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+async def get_all_orders():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM orders ORDER BY created_at DESC') as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
