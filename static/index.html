@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>مدیریت پاور یوگا و رژیم غذایی | نسخه مربی</title>
+    <title>مدیریت پاور یوگا و رژیم غذایی | نسخه مربی (آفلاین)</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vazirmatn Font for Persian UI -->
@@ -35,7 +37,10 @@
                     <span>🧘‍♂️</span>
                     <span>اپلیکیشن مربی پاور یوگا</span>
                 </h1>
-                <p class="text-xs text-indigo-100 mt-1">مدیریت شاگردان و برنامه‌های هوشمند</p>
+                <p class="text-xs text-indigo-100 mt-1 flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>نسخه ۱۰۰٪ آفلاین و هوشمند</span>
+                </p>
             </div>
             <button onclick="openModal('addClientModal')" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-full text-sm font-semibold transition backdrop-blur-sm">
                 ➕ افزودن شاگرد
@@ -70,7 +75,7 @@
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-6">
                 <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                     <span>🤖</span>
-                    <span>تولید برنامه پاور یوگا و رژیم غذایی</span>
+                    <span>تولید برنامه پاور یوگا و رژیم غذایی (آفلاین)</span>
                 </h2>
 
                 <div class="space-y-4">
@@ -180,7 +185,15 @@
     </div>
 
     <script>
+        // Register Service Worker for Offline PWA Support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW register fail:', err));
+            });
+        }
+
         let clientsData = [];
+        let progressData = {}; // clientId -> Array of progress
         let activeClientId = null;
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -215,14 +228,39 @@
             document.getElementById(id).classList.add('hidden');
         }
 
+        // Offline-first LocalStorage Client Management
+        function getLocalClients() {
+            const stored = localStorage.getItem('py_clients');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveLocalClients(clients) {
+            localStorage.setItem('py_clients', JSON.stringify(clients));
+        }
+
+        function getLocalProgress(clientId) {
+            const stored = localStorage.getItem(`py_progress_${clientId}`);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveLocalProgress(clientId, list) {
+            localStorage.setItem(`py_progress_${clientId}`, JSON.stringify(list));
+        }
+
         async function loadClients() {
             try {
                 const res = await fetch('/api/clients');
-                clientsData = await res.json();
-                renderClientsList();
+                if (res.ok) {
+                    clientsData = await res.json();
+                    saveLocalClients(clientsData);
+                } else {
+                    clientsData = getLocalClients();
+                }
             } catch (err) {
-                console.error('Error fetching clients:', err);
+                console.log('Backend offline, using localStorage.');
+                clientsData = getLocalClients();
             }
+            renderClientsList();
         }
 
         function renderClientsList() {
@@ -265,29 +303,47 @@
 
         async function handleAddClient(e) {
             e.preventDefault();
-            const data = {
+            const newClient = {
+                id: Date.now(),
                 first_name: document.getElementById('inputFirstName').value.trim(),
                 last_name: document.getElementById('inputLastName').value.trim(),
                 age: parseInt(document.getElementById('inputAge').value),
                 height: parseFloat(document.getElementById('inputHeight').value),
                 weight: parseFloat(document.getElementById('inputWeight').value),
                 training_history: document.getElementById('inputHistory').value.trim(),
+                created_at: new Date().toISOString()
             };
 
             try {
                 const res = await fetch('/api/clients', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(newClient)
                 });
                 if (res.ok) {
-                    document.getElementById('addClientForm').reset();
-                    closeModal('addClientModal');
-                    loadClients();
+                    const data = await res.json();
+                    if (data.id) newClient.id = data.id;
                 }
             } catch (err) {
-                console.error('Error adding client:', err);
+                console.log('Saved client offline.');
             }
+
+            clientsData.unshift(newClient);
+            saveLocalClients(clientsData);
+
+            // Initial progress log
+            const initialProg = [{
+                id: Date.now(),
+                client_id: newClient.id,
+                weight: newClient.weight,
+                notes: 'ثبت اولیه مشخصات',
+                recorded_at: new Date().toLocaleDateString('fa-IR')
+            }];
+            saveLocalProgress(newClient.id, initialProg);
+
+            document.getElementById('addClientForm').reset();
+            closeModal('addClientModal');
+            renderClientsList();
         }
 
         async function openProgressModal(clientId) {
@@ -301,52 +357,74 @@
         }
 
         async function loadClientProgress(clientId) {
+            let progressList = [];
             try {
                 const res = await fetch(`/api/clients/${clientId}/progress`);
-                const progressList = await res.json();
-                const container = document.getElementById('progressHistoryList');
-
-                if (!progressList || progressList.length === 0) {
-                    container.innerHTML = '<p class="text-xs text-slate-400 py-2">هنوز سابقه جدیدی ثبت نشده است.</p>';
-                    return;
+                if (res.ok) {
+                    progressList = await res.json();
+                    saveLocalProgress(clientId, progressList);
+                } else {
+                    progressList = getLocalProgress(clientId);
                 }
-
-                container.innerHTML = progressList.map(item => `
-                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
-                        <div>
-                            <span class="font-bold text-slate-700">⚖️ ${item.weight} کیلوگرم</span>
-                            ${item.notes ? `<p class="text-[11px] text-slate-500 mt-0.5">${item.notes}</p>` : ''}
-                        </div>
-                        <span class="text-[10px] text-slate-400">${item.recorded_at ? item.recorded_at.split(' ')[0] : ''}</span>
-                    </div>
-                `).join('');
             } catch (err) {
-                console.error('Error loading progress:', err);
+                progressList = getLocalProgress(clientId);
             }
+
+            const container = document.getElementById('progressHistoryList');
+            if (!progressList || progressList.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 py-2">هنوز سابقه جدیدی ثبت نشده است.</p>';
+                return;
+            }
+
+            container.innerHTML = progressList.map(item => `
+                <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                    <div>
+                        <span class="font-bold text-slate-700">⚖️ ${item.weight} کیلوگرم</span>
+                        ${item.notes ? `<p class="text-[11px] text-slate-500 mt-0.5">${item.notes}</p>` : ''}
+                    </div>
+                    <span class="text-[10px] text-slate-400">${item.recorded_at ? String(item.recorded_at).split('T')[0] : ''}</span>
+                </div>
+            `).join('');
         }
 
         async function handleAddProgress(e) {
             e.preventDefault();
             const clientId = document.getElementById('progressClientId').value;
-            const data = {
-                weight: parseFloat(document.getElementById('inputNewWeight').value),
-                notes: document.getElementById('inputProgressNotes').value.trim()
+            const newWeight = parseFloat(document.getElementById('inputNewWeight').value);
+            const notes = document.getElementById('inputProgressNotes').value.trim();
+
+            const newProgItem = {
+                id: Date.now(),
+                client_id: clientId,
+                weight: newWeight,
+                notes: notes,
+                recorded_at: new Date().toLocaleDateString('fa-IR')
             };
 
             try {
-                const res = await fetch(`/api/clients/${clientId}/progress`, {
+                await fetch(`/api/clients/${clientId}/progress`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify({ weight: newWeight, notes: notes })
                 });
-                if (res.ok) {
-                    document.getElementById('addProgressForm').reset();
-                    loadClientProgress(clientId);
-                    loadClients();
-                }
             } catch (err) {
-                console.error('Error adding progress:', err);
+                console.log('Saved progress offline.');
             }
+
+            let currentList = getLocalProgress(clientId);
+            currentList.push(newProgItem);
+            saveLocalProgress(clientId, currentList);
+
+            // Update client weight
+            const clientIdx = clientsData.findIndex(c => String(c.id) === String(clientId));
+            if (clientIdx !== -1) {
+                clientsData[clientIdx].weight = newWeight;
+                saveLocalClients(clientsData);
+            }
+
+            document.getElementById('addProgressForm').reset();
+            loadClientProgress(clientId);
+            renderClientsList();
         }
 
         function populateClientSelect() {
@@ -360,6 +438,65 @@
             document.getElementById('selectClientForPlan').value = clientId;
         }
 
+        // Offline Client-Side Persian Plan Generator Engine
+        function generateOfflinePersianPlan(client, progressList) {
+            const heightM = client.height / 100.0;
+            const bmi = (client.weight / (heightM * heightM)).toFixed(1);
+
+            return `
+🧘‍♂️ **برنامه اختصاصی پاور یوگا و رژیم غذایی (آفلاین)**
+👤 **شاگرد:** ${client.first_name} ${client.last_name} | **سن:** ${client.age} سال | **قد:** ${client.height} cm | **وزن:** ${client.weight} kg
+📊 **شاخص توده بدنی (BMI):** ${bmi}
+
+---
+
+### ۱. تحلیل بدنی و هدف‌گذاری
+با توجه به سابقه تمرینی (${client.training_history || 'ثبت نشده'}) و وزن فعلی ${client.weight} کیلوگرم، تمرکز این دوره بر **افزایش استقامت عضلانی، بهبود تعادل دینامیک، تقویت عضلات کور (Core) و چربی‌سوزی هوشمند** با سیکل‌های پاور یوگا خواهد بود.
+
+---
+
+### ۲. برنامه تمرینی آنلاین و روزآمد پاور یوگا (۴ روز در هفته)
+
+#### 🏋️‍♂️ روز اول: قدرت حرکتی و تقویت عضلات کور (Core & Power Flow)
+- **گرم کردن (۱۰ دقیقه):** ۵ دور سلام بر خورشید الف (Surya Namaskar A) + تنفس عمیق شکمی
+- **سیکل اصلی (۳۰ دقیقه):**
+  - چاتورانگا دانداسana (Chaturanga Dandasana) 🔁 ۱۰ مرتبه همراه با مکث ۳ ثانیه
+  - وضعیت سگ سر پایین به سگ سر بالا (Downward to Upward Dog Flow) 🔁 ۸ مرتبه
+  - ژست جنگجو ۲ (Virabhadrasana II) ⏱ هر طرف ۴۵ ثانیه
+  - ژست کلاغ (Bakasana) ⏱ ۳ ست ۱۵ ثانیه‌ای (جهت تعادل و قدرت مچ/شانه)
+- **سرد کردن (۱۰ دقیقه):** ژست کودک (Balasana) + ساواسان (Savasana) با تنفس ریتمیک
+
+#### 🧘‍♀️ روز دوم: انعطاف‌پذیری و تعادل پیشرفته (Flexibility & Balance Flow)
+- **گرم کردن (۱۰ دقیقه):** ۵ دور سلام بر خورشید ب (Surya Namaskar B)
+- **سیکل اصلی (۳۰ دقیقه):**
+  - ژست مثلث (Trikonasana) ⏱ هر طرف ۵۰ ثانیه
+  - ژست درخت (Vrikshasana) ⏱ هر طرف ۱ دقیقه
+  - ژست ملخ (Salabhasana) 🔁 ۳ ست ۱۰ تایی برای تقویت فیله کمر
+- **سرد کردن (۱۰ دقیقه):** کشش همسترینگ نشسته + ساواسان
+
+#### 🏋️‍♂️ روز سوم: استقامت و چربی‌سوزی پاور یوگا (Dynamic Cardio Power)
+- **سیکل هوازی یوگا (۳۵ دقیقه):**
+  - پرش از سگ سر پایین به پلانک 🔁 ۱۲ مرتبه
+  - ژست صندلی (Utkatasana) با مکث ۳۰ ثانیه‌ای 🔁 ۴ ست
+  - ژست جنگجو ۳ (Virabhadrasana III) ⏱ هر طرف ۳۰ ثانیه
+- **سرد کردن (۱۰ دقیقه):** ریلکسیشن عمیق و مدیتیشن تمرکزی
+
+#### 🧘‍♀️ روز چهارم: بازیابی فعال و کشش عمیق (Active Recovery)
+- کشش کامل زنجیره پشتی، باز کردن لگن (Pigeon Pose) و کشش ستون فقرات به مدت ۳۰ دقیقه.
+
+---
+
+### ۳. برنامه رژیم غذایی هوشمند و متناسب با تمرینات
+- **صبحانه:** ۲ عدد تخم‌مرغ آب‌پز + ۱ کف دست نان سنگک + ۳۰ گرم پنیر کم‌چرب و گردو + چای سبز
+- **میان‌وعده صبح:** ۱ عدد سیب یا فیله فیبردار + ۵ عدد بادام درختی
+- **ناهار:** ۱۵۰ گرم سینه مرغ یا ماهی گریل‌شده + ۱ لیوان برنج قهوه‌ای/کته + بشقاب سالاد فصل با روغن زیتون و لیمو
+- **میان‌وعده قبل تمرین (۱ ساعت قبل):** ۱ عدد موز + ۱ قاشق مربی‌خوری عسل یا کره بادام‌زمینی
+- **میان‌وعده بعد تمرین (بلافاصله):** اسکوپ پروتئین یا ۱ لیوان شیر کم‌چرب + ۲ عدد خرما
+- **شام:** بشقاب سبزیجات بخارپز (بروکلی، هویج، کدو) + ۱۰۰ گرم عدسی یا عدس‌پلو کم‌چرب
+- **هیدراتاسیون:** حداقل ۸ تا ۱۰ لیوان آب در روز.
+`;
+        }
+
         async function generateAIPlan() {
             const clientId = document.getElementById('selectClientForPlan').value;
             if (!clientId) {
@@ -367,9 +504,13 @@
                 return;
             }
 
+            const client = clientsData.find(c => String(c.id) === String(clientId));
             const btn = document.getElementById('btnGeneratePlan');
             btn.disabled = true;
-            btn.innerHTML = '<span>⏳</span><span>در حال دریافت برنامه هوشمند...</span>';
+            btn.innerHTML = '<span>⏳</span><span>در حال تولید برنامه هوشمند...</span>';
+
+            let planTitle = `برنامه آنلاین پاور یوگا و رژیم غذایی - ${client.first_name} ${client.last_name}`;
+            let planContent = '';
 
             try {
                 const res = await fetch(`/api/clients/${clientId}/generate-plan`, {
@@ -380,17 +521,22 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    document.getElementById('aiPlanTitle').innerText = data.title;
-                    document.getElementById('aiPlanContent').innerText = data.content;
-                    document.getElementById('aiPlanContainer').classList.remove('hidden');
+                    planTitle = data.title;
+                    planContent = data.content;
+                } else {
+                    planContent = generateOfflinePersianPlan(client, getLocalProgress(clientId));
                 }
             } catch (err) {
-                console.error('Error generating plan:', err);
-                alert('خطا در دریافت برنامه. لطفاً مجدداً تلاش نمایید.');
+                console.log('Generating offline plan.');
+                planContent = generateOfflinePersianPlan(client, getLocalProgress(clientId));
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<span>✨</span><span>تولید برنامه تمرین و رژیم اختصاصی</span>';
             }
+
+            document.getElementById('aiPlanTitle').innerText = planTitle;
+            document.getElementById('aiPlanContent').innerText = planContent;
+            document.getElementById('aiPlanContainer').classList.remove('hidden');
         }
 
         function copyPlanText() {
