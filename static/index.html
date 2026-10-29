@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>مدیریت پاور یوگا و رژیم غذایی | نسخه مربی (آفلاین)</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vazirmatn Font for Persian UI -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .gradient-header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+        .btn-gradient {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        }
+        .btn-gradient:active {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body class="pb-16 text-slate-800">
+
+    <!-- Header / Navbar -->
+    <header class="gradient-header text-white p-5 shadow-lg rounded-b-3xl sticky top-0 z-50">
+        <div class="max-w-md mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-extrabold flex items-center gap-2">
+                    <span>🧘‍♂️</span>
+                    <span>اپلیکیشن مربی پاور یوگا</span>
+                </h1>
+                <p class="text-xs text-indigo-100 mt-1 flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>نسخه ۱۰۰٪ آفلاین و هوشمند</span>
+                </p>
+            </div>
+            <button onclick="openModal('addClientModal')" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-full text-sm font-semibold transition backdrop-blur-sm">
+                ➕ افزودن شاگرد
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-md mx-auto px-4 mt-6">
+
+        <!-- Tab Navigation -->
+        <div class="flex bg-slate-200 p-1 rounded-2xl mb-6 shadow-inner text-sm font-bold">
+            <button id="tabClientsBtn" onclick="switchTab('clients')" class="flex-1 py-2.5 rounded-xl text-center transition bg-white shadow-sm text-indigo-600">
+                📋 لیست شاگردان
+            </button>
+            <button id="tabPlansBtn" onclick="switchTab('plans')" class="flex-1 py-2.5 rounded-xl text-center transition text-slate-600">
+                ✨ تولید برنامه هوشمند
+            </button>
+        </div>
+
+        <!-- Section 1: Client List & Management -->
+        <section id="clientsSection">
+            <div id="clientsList" class="space-y-4">
+                <div class="text-center py-10 text-slate-400">
+                    <p class="animate-pulse">در حال دریافت لیست شاگردان...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: AI Plan Generation & View -->
+        <section id="plansSection" class="hidden">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-6">
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <span>🤖</span>
+                    <span>تولید برنامه پاور یوگا و رژیم غذایی (آفلاین)</span>
+                </h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">انتخاب شاگرد:</label>
+                        <select id="selectClientForPlan" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">لطفاً یک شاگرد را انتخاب کنید...</option>
+                        </select>
+                    </div>
+
+                    <button onclick="generateAIPlan()" id="btnGeneratePlan" class="w-full btn-gradient text-white py-3.5 rounded-xl font-bold shadow-md shadow-indigo-200 hover:shadow-lg transition flex justify-center items-center gap-2">
+                        <span>✨</span>
+                        <span>تولید برنامه تمرین و رژیم اختصاصی</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI Output Plan Display -->
+            <div id="aiPlanContainer" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-indigo-100">
+                <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                    <h3 id="aiPlanTitle" class="font-bold text-indigo-900 text-base"></h3>
+                    <button onclick="copyPlanText()" class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100">
+                        📋 کپی برنامه
+                    </button>
+                </div>
+                <div id="aiPlanContent" class="text-sm text-slate-700 leading-relaxed whitespace-pre-line space-y-2">
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal 1: Add New Client -->
+    <div id="addClientModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b pb-3 border-slate-100">
+                <h3 class="font-bold text-slate-800 text-lg">ثبت شاگرد جدید</h3>
+                <button onclick="closeModal('addClientModal')" class="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+
+            <form id="addClientForm" onsubmit="handleAddClient(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">نام</label>
+                    <input type="text" id="inputFirstName" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">نام خانوادگی</label>
+                    <input type="text" id="inputLastName" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">سن</label>
+                        <input type="number" id="inputAge" required min="5" max="100" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">قد (cm)</label>
+                        <input type="number" step="0.1" id="inputHeight" required min="50" max="250" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 mb-1">وزن (kg)</label>
+                        <input type="number" step="0.1" id="inputWeight" required min="20" max="300" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">سوابق تمرینی و ملاحظات</label>
+                    <textarea id="inputHistory" rows="2" placeholder="مثال: ۲ سال سابقه یوگا، آسیب‌دیدگی جزئی زانو" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <button type="submit" class="w-full btn-gradient text-white py-3 rounded-xl font-bold shadow-md shadow-indigo-200 mt-2">
+                    ذخیره شاگرد
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 2: Progress & Details Modal -->
+    <div id="progressModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3 border-slate-100">
+                <h3 id="progressModalTitle" class="font-bold text-slate-800 text-base">سوابق و پیشرفت</h3>
+                <button onclick="closeModal('progressModal')" class="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+
+            <!-- Form to add progress record -->
+            <form id="addProgressForm" onsubmit="handleAddProgress(event)" class="bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
+                <input type="hidden" id="progressClientId">
+                <h4 class="text-xs font-bold text-indigo-900">ثبت رکورد پیشرفت جدید:</h4>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <input type="number" step="0.1" id="inputNewWeight" placeholder="وزن جدید (kg)" required class="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <input type="text" id="inputProgressNotes" placeholder="توضیحات و بازخورد" class="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-xl text-xs font-bold transition">
+                    + ثبت رکورد
+                </button>
+            </form>
+
+            <!-- Progress History List -->
+            <div>
+                <h4 class="text-xs font-bold text-slate-600 mb-2">روند و سوابق ثبت‌شده:</h4>
+                <div id="progressHistoryList" class="space-y-2">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Register Service Worker for Offline PWA Support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js').catch(err => console.log('SW register fail:', err));
+            });
+        }
+
+        let clientsData = [];
+        let progressData = {}; // clientId -> Array of progress
+        let activeClientId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadClients();
+        });
+
+        function switchTab(tab) {
+            const clientsBtn = document.getElementById('tabClientsBtn');
+            const plansBtn = document.getElementById('tabPlansBtn');
+            const clientsSec = document.getElementById('clientsSection');
+            const plansSec = document.getElementById('plansSection');
+
+            if (tab === 'clients') {
+                clientsBtn.className = "flex-1 py-2.5 rounded-xl text-center transition bg-white shadow-sm text-indigo-600";
+                plansBtn.className = "flex-1 py-2.5 rounded-xl text-center transition text-slate-600";
+                clientsSec.classList.remove('hidden');
+                plansSec.classList.add('hidden');
+            } else {
+                plansBtn.className = "flex-1 py-2.5 rounded-xl text-center transition bg-white shadow-sm text-indigo-600";
+                clientsBtn.className = "flex-1 py-2.5 rounded-xl text-center transition text-slate-600";
+                plansSec.classList.remove('hidden');
+                clientsSec.classList.add('hidden');
+                populateClientSelect();
+            }
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // Offline-first LocalStorage Client Management
+        function getLocalClients() {
+            const stored = localStorage.getItem('py_clients');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveLocalClients(clients) {
+            localStorage.setItem('py_clients', JSON.stringify(clients));
+        }
+
+        function getLocalProgress(clientId) {
+            const stored = localStorage.getItem(`py_progress_${clientId}`);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveLocalProgress(clientId, list) {
+            localStorage.setItem(`py_progress_${clientId}`, JSON.stringify(list));
+        }
+
+        async function loadClients() {
+            try {
+                const res = await fetch('/api/clients');
+                if (res.ok) {
+                    clientsData = await res.json();
+                    saveLocalClients(clientsData);
+                } else {
+                    clientsData = getLocalClients();
+                }
+            } catch (err) {
+                console.log('Backend offline, using localStorage.');
+                clientsData = getLocalClients();
+            }
+            renderClientsList();
+        }
+
+        function renderClientsList() {
+            const listEl = document.getElementById('clientsList');
+            if (!clientsData || clientsData.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 p-6">
+                        <span class="text-3xl">🧘‍♀️</span>
+                        <p class="text-sm font-bold text-slate-600 mt-2">هنوز هیچ شاگردی ثبت نشده است.</p>
+                        <p class="text-xs text-slate-400 mt-1">با زدن دکمه «افزودن شاگرد» مشخصات اولیه را وارد کنید.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = clientsData.map(client => `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center transition hover:shadow-md">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-800 text-base">${client.first_name} ${client.last_name}</span>
+                            <span class="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">${client.age} سال</span>
+                        </div>
+                        <div class="text-xs text-slate-500 flex gap-3">
+                            <span>📏 قد: ${client.height} cm</span>
+                            <span>⚖️ وزن: ${client.weight} kg</span>
+                        </div>
+                        ${client.training_history ? `<p class="text-[11px] text-slate-400 line-clamp-1">📝 ${client.training_history}</p>` : ''}
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <button onclick="openProgressModal(${client.id})" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                            📊 پیشرفت
+                        </button>
+                        <button onclick="selectForPlanAndSwitch(${client.id})" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                            ✨ برنامه AI
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function handleAddClient(e) {
+            e.preventDefault();
+            const newClient = {
+                id: Date.now(),
+                first_name: document.getElementById('inputFirstName').value.trim(),
+                last_name: document.getElementById('inputLastName').value.trim(),
+                age: parseInt(document.getElementById('inputAge').value),
+                height: parseFloat(document.getElementById('inputHeight').value),
+                weight: parseFloat(document.getElementById('inputWeight').value),
+                training_history: document.getElementById('inputHistory').value.trim(),
+                created_at: new Date().toISOString()
+            };
+
+            try {
+                const res = await fetch('/api/clients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newClient)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.id) newClient.id = data.id;
+                }
+            } catch (err) {
+                console.log('Saved client offline.');
+            }
+
+            clientsData.unshift(newClient);
+            saveLocalClients(clientsData);
+
+            // Initial progress log
+            const initialProg = [{
+                id: Date.now(),
+                client_id: newClient.id,
+                weight: newClient.weight,
+                notes: 'ثبت اولیه مشخصات',
+                recorded_at: new Date().toLocaleDateString('fa-IR')
+            }];
+            saveLocalProgress(newClient.id, initialProg);
+
+            document.getElementById('addClientForm').reset();
+            closeModal('addClientModal');
+            renderClientsList();
+        }
+
+        async function openProgressModal(clientId) {
+            activeClientId = clientId;
+            const client = clientsData.find(c => c.id === clientId);
+            document.getElementById('progressModalTitle').innerText = `سوابق پیشرفت - ${client.first_name} ${client.last_name}`;
+            document.getElementById('progressClientId').value = clientId;
+
+            openModal('progressModal');
+            loadClientProgress(clientId);
+        }
+
+        async function loadClientProgress(clientId) {
+            let progressList = [];
+            try {
+                const res = await fetch(`/api/clients/${clientId}/progress`);
+                if (res.ok) {
+                    progressList = await res.json();
+                    saveLocalProgress(clientId, progressList);
+                } else {
+                    progressList = getLocalProgress(clientId);
+                }
+            } catch (err) {
+                progressList = getLocalProgress(clientId);
+            }
+
+            const container = document.getElementById('progressHistoryList');
+            if (!progressList || progressList.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 py-2">هنوز سابقه جدیدی ثبت نشده است.</p>';
+                return;
+            }
+
+            container.innerHTML = progressList.map(item => `
+                <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                    <div>
+                        <span class="font-bold text-slate-700">⚖️ ${item.weight} کیلوگرم</span>
+                        ${item.notes ? `<p class="text-[11px] text-slate-500 mt-0.5">${item.notes}</p>` : ''}
+                    </div>
+                    <span class="text-[10px] text-slate-400">${item.recorded_at ? String(item.recorded_at).split('T')[0] : ''}</span>
+                </div>
+            `).join('');
+        }
+
+        async function handleAddProgress(e) {
+            e.preventDefault();
+            const clientId = document.getElementById('progressClientId').value;
+            const newWeight = parseFloat(document.getElementById('inputNewWeight').value);
+            const notes = document.getElementById('inputProgressNotes').value.trim();
+
+            const newProgItem = {
+                id: Date.now(),
+                client_id: clientId,
+                weight: newWeight,
+                notes: notes,
+                recorded_at: new Date().toLocaleDateString('fa-IR')
+            };
+
+            try {
+                await fetch(`/api/clients/${clientId}/progress`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weight: newWeight, notes: notes })
+                });
+            } catch (err) {
+                console.log('Saved progress offline.');
+            }
+
+            let currentList = getLocalProgress(clientId);
+            currentList.push(newProgItem);
+            saveLocalProgress(clientId, currentList);
+
+            // Update client weight
+            const clientIdx = clientsData.findIndex(c => String(c.id) === String(clientId));
+            if (clientIdx !== -1) {
+                clientsData[clientIdx].weight = newWeight;
+                saveLocalClients(clientsData);
+            }
+
+            document.getElementById('addProgressForm').reset();
+            loadClientProgress(clientId);
+            renderClientsList();
+        }
+
+        function populateClientSelect() {
+            const selectEl = document.getElementById('selectClientForPlan');
+            selectEl.innerHTML = '<option value="">لطفاً یک شاگرد را انتخاب کنید...</option>' +
+                clientsData.map(c => `<option value="${c.id}">${c.first_name} ${c.last_name} (${c.weight} kg)</option>`).join('');
+        }
+
+        function selectForPlanAndSwitch(clientId) {
+            switchTab('plans');
+            document.getElementById('selectClientForPlan').value = clientId;
+        }
+
+        // Offline Client-Side Persian Plan Generator Engine
+        function generateOfflinePersianPlan(client, progressList) {
+            const heightM = client.height / 100.0;
+            const bmi = (client.weight / (heightM * heightM)).toFixed(1);
+
+            return `
+🧘‍♂️ **برنامه اختصاصی پاور یوگا و رژیم غذایی (آفلاین)**
+👤 **شاگرد:** ${client.first_name} ${client.last_name} | **سن:** ${client.age} سال | **قد:** ${client.height} cm | **وزن:** ${client.weight} kg
+📊 **شاخص توده بدنی (BMI):** ${bmi}
+
+---
+
+### ۱. تحلیل بدنی و هدف‌گذاری
+با توجه به سابقه تمرینی (${client.training_history || 'ثبت نشده'}) و وزن فعلی ${client.weight} کیلوگرم، تمرکز این دوره بر **افزایش استقامت عضلانی، بهبود تعادل دینامیک، تقویت عضلات کور (Core) و چربی‌سوزی هوشمند** با سیکل‌های پاور یوگا خواهد بود.
+
+---
+
+### ۲. برنامه تمرینی آنلاین و روزآمد پاور یوگا (۴ روز در هفته)
+
+#### 🏋️‍♂️ روز اول: قدرت حرکتی و تقویت عضلات کور (Core & Power Flow)
+- **گرم کردن (۱۰ دقیقه):** ۵ دور سلام بر خورشید الف (Surya Namaskar A) + تنفس عمیق شکمی
+- **سیکل اصلی (۳۰ دقیقه):**
+  - چاتورانگا دانداسana (Chaturanga Dandasana) 🔁 ۱۰ مرتبه همراه با مکث ۳ ثانیه
+  - وضعیت سگ سر پایین به سگ سر بالا (Downward to Upward Dog Flow) 🔁 ۸ مرتبه
+  - ژست جنگجو ۲ (Virabhadrasana II) ⏱ هر طرف ۴۵ ثانیه
+  - ژست کلاغ (Bakasana) ⏱ ۳ ست ۱۵ ثانیه‌ای (جهت تعادل و قدرت مچ/شانه)
+- **سرد کردن (۱۰ دقیقه):** ژست کودک (Balasana) + ساواسان (Savasana) با تنفس ریتمیک
+
+#### 🧘‍♀️ روز دوم: انعطاف‌پذیری و تعادل پیشرفته (Flexibility & Balance Flow)
+- **گرم کردن (۱۰ دقیقه):** ۵ دور سلام بر خورشید ب (Surya Namaskar B)
+- **سیکل اصلی (۳۰ دقیقه):**
+  - ژست مثلث (Trikonasana) ⏱ هر طرف ۵۰ ثانیه
+  - ژست درخت (Vrikshasana) ⏱ هر طرف ۱ دقیقه
+  - ژست ملخ (Salabhasana) 🔁 ۳ ست ۱۰ تایی برای تقویت فیله کمر
+- **سرد کردن (۱۰ دقیقه):** کشش همسترینگ نشسته + ساواسان
+
+#### 🏋️‍♂️ روز سوم: استقامت و چربی‌سوزی پاور یوگا (Dynamic Cardio Power)
+- **سیکل هوازی یوگا (۳۵ دقیقه):**
+  - پرش از سگ سر پایین به پلانک 🔁 ۱۲ مرتبه
+  - ژست صندلی (Utkatasana) با مکث ۳۰ ثانیه‌ای 🔁 ۴ ست
+  - ژست جنگجو ۳ (Virabhadrasana III) ⏱ هر طرف ۳۰ ثانیه
+- **سرد کردن (۱۰ دقیقه):** ریلکسیشن عمیق و مدیتیشن تمرکزی
+
+#### 🧘‍♀️ روز چهارم: بازیابی فعال و کشش عمیق (Active Recovery)
+- کشش کامل زنجیره پشتی، باز کردن لگن (Pigeon Pose) و کشش ستون فقرات به مدت ۳۰ دقیقه.
+
+---
+
+### ۳. برنامه رژیم غذایی هوشمند و متناسب با تمرینات
+- **صبحانه:** ۲ عدد تخم‌مرغ آب‌پز + ۱ کف دست نان سنگک + ۳۰ گرم پنیر کم‌چرب و گردو + چای سبز
+- **میان‌وعده صبح:** ۱ عدد سیب یا فیله فیبردار + ۵ عدد بادام درختی
+- **ناهار:** ۱۵۰ گرم سینه مرغ یا ماهی گریل‌شده + ۱ لیوان برنج قهوه‌ای/کته + بشقاب سالاد فصل با روغن زیتون و لیمو
+- **میان‌وعده قبل تمرین (۱ ساعت قبل):** ۱ عدد موز + ۱ قاشق مربی‌خوری عسل یا کره بادام‌زمینی
+- **میان‌وعده بعد تمرین (بلافاصله):** اسکوپ پروتئین یا ۱ لیوان شیر کم‌چرب + ۲ عدد خرما
+- **شام:** بشقاب سبزیجات بخارپز (بروکلی، هویج، کدو) + ۱۰۰ گرم عدسی یا عدس‌پلو کم‌چرب
+- **هیدراتاسیون:** حداقل ۸ تا ۱۰ لیوان آب در روز.
+`;
+        }
+
+        async function generateAIPlan() {
+            const clientId = document.getElementById('selectClientForPlan').value;
+            if (!clientId) {
+                alert('لطفاً ابتدا یک شاگرد را انتخاب کنید.');
+                return;
+            }
+
+            const client = clientsData.find(c => String(c.id) === String(clientId));
+            const btn = document.getElementById('btnGeneratePlan');
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span><span>در حال تولید برنامه هوشمند...</span>';
+
+            let planTitle = `برنامه آنلاین پاور یوگا و رژیم غذایی - ${client.first_name} ${client.last_name}`;
+            let planContent = '';
+
+            try {
+                const res = await fetch(`/api/clients/${clientId}/generate-plan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan_type: 'combined' })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    planTitle = data.title;
+                    planContent = data.content;
+                } else {
+                    planContent = generateOfflinePersianPlan(client, getLocalProgress(clientId));
+                }
+            } catch (err) {
+                console.log('Generating offline plan.');
+                planContent = generateOfflinePersianPlan(client, getLocalProgress(clientId));
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>✨</span><span>تولید برنامه تمرین و رژیم اختصاصی</span>';
+            }
+
+            document.getElementById('aiPlanTitle').innerText = planTitle;
+            document.getElementById('aiPlanContent').innerText = planContent;
+            document.getElementById('aiPlanContainer').classList.remove('hidden');
+        }
+
+        function copyPlanText() {
+            const text = document.getElementById('aiPlanContent').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('متن برنامه با موفقیت کپی شد.');
+            });
+        }
+    </script>
+</body>
+</html>
